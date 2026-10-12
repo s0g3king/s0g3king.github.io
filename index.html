@@ -92,12 +92,17 @@ a.card:hover,a.row:hover{transform:translateY(-2px)}
 .chal[data-cat=crypto]{--cc:#c08cff}
 .chal[data-cat=hardware]{--cc:var(--accent2)}
 .chal{--cc:var(--muted)}
+code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:.85em}
+.adv{gap:6px 16px}
+.adv .id{color:var(--accent2);font-size:.75rem}
+.adv .id b{font-weight:400;color:var(--text)}
+.adv .go{grid-column:1/-1;font-size:.85rem;color:var(--accent)}
 </style>
 </head>
 <body>
 <nav><div class="wrap">
   <b><a href="index.html" style="color:inherit">s0g3king</a></b>
-  <a href="index.html#about">about</a><a href="#writeups">writeups</a><a href="index.html#challenges">challenges</a><a href="index.html#contact">contact</a>
+  <a href="index.html#about">about</a><a href="#writeups">writeups</a><a href="index.html#challenges">challenges</a><a href="#disclosures">disclosures</a><a href="index.html#contact">contact</a>
 </div></nav>
 
 <div class="wrap">
@@ -127,6 +132,11 @@ a.card:hover,a.row:hover{transform:translateY(-2px)}
   <h2>challenges I made</h2>
   <p>Challenges I wrote and published for the <a href="https://github.com/Armenian-Infosec-Community/CTFs">Armenian Infosec Community</a> CTF repository. Each one ships with a Dockerfile.</p>
   <div class="grid" id="chalgrid"></div>
+</section>
+
+<section id="disclosures" class="reveal">
+  <h2>vulnerability disclosures</h2>
+  <div class="list" id="disclist"></div>
 </section>
 
 <section id="contact" class="reveal">
@@ -283,5 +293,28 @@ Promise.all(CHALLENGES.map(readmeSnippet)).then(snips=>{
   reveal(cg);
 });
 reveal(document.body);
+// Vulnerabilities I reported. Add an entry (repo + GHSA id) and it appears; CVE ID, score and date fill in from GitHub once published.
+const DISCLOSURES = [
+  {repo:"Termix-SSH/Termix", ghsa:"GHSA-j7j4-82wh-3vj5", title:"Termix: LDAPS certificate validation disabled",
+   desc:"Reported a MITM credential-capture bug in Termix's LDAP client. Fixed in 26.10.0.", cvss:"5.3", date:"2026-10-10", cve:null}
+];
+async function enrichDisclosure(d){
+  try{
+    const r=await fetch(`https://api.github.com/repos/${d.repo}/security-advisories/${d.ghsa}`);
+    if(!r.ok) return d;
+    const a=await r.json();
+    return {...d,cve:a.cve_id||d.cve,cvss:(a.cvss&&a.cvss.score)||d.cvss,date:(a.published_at||d.date).slice(0,10)};
+  }catch(_){return d}
+}
+Promise.all(DISCLOSURES.map(enrichDisclosure)).then(ds=>{
+  const el=document.getElementById("disclist");
+  const fmt=s=>new Date(s).toLocaleDateString("en-GB",{month:"short",year:"numeric"});
+  el.innerHTML=ds.map(d=>`<a class="row adv reveal" href="https://github.com/${d.repo}/security/advisories/${d.ghsa}">
+    <h3>${esc(d.title)}</h3><span class="meta">${fmt(d.date)}</span>
+    <span class="id" style="grid-column:1/-1">${[d.cve&&`<b>${esc(d.cve)}</b>`,esc(d.ghsa),d.cvss&&`CVSS ${esc(d.cvss)}`].filter(Boolean).join(" · ")}</span>
+    <p>${esc(d.desc)}</p><span class="go">View advisory →</span></a>`).join("");
+  reveal(el);
+});
+
 </script>
 </body></html>
