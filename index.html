@@ -97,6 +97,10 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding
 .adv .id{color:var(--accent2);font-size:.75rem}
 .adv .id b{font-weight:400;color:var(--text)}
 .adv .go{grid-column:1/-1;font-size:.85rem;color:var(--accent)}
+#chalgrid{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:12px;scrollbar-width:thin;scrollbar-color:var(--line) transparent;-webkit-overflow-scrolling:touch}
+#chalgrid .card{flex:0 0 min(300px,82%);scroll-snap-align:start}
+#chalgrid::-webkit-scrollbar{height:8px}
+#chalgrid::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
 </style>
 </head>
 <body>
@@ -223,10 +227,41 @@ const WRITEUPS_FALLBACK = [
   }
 ];
 // Challenges I authored. Add an entry here and it shows up on the site.
-const CHALLENGES = [
-  {name:"infiltrator", cat:"pwn", repo:"Armenian-Infosec-Community/CTFs", path:"PWN/infiltrator"},
-  {name:"boundaries", cat:"reverse", repo:"Armenian-Infosec-Community/CTFs", path:"Reverse/boundaries"}
+const CHAL_REPO = "Armenian-Infosec-Community/CTFs";
+// Used if GitHub can't be reached (rate limit, offline). Normally the list is discovered automatically below.
+const CHALLENGES_FALLBACK = [
+  {name:"infiltrator", cat:"pwn", repo:CHAL_REPO, path:"PWN/infiltrator"},
+  {name:"the-hollow-archives", cat:"pwn", repo:CHAL_REPO, path:"PWN/the-hollow-archives"},
+  {name:"the-return-of-the-living-dead", cat:"pwn", repo:CHAL_REPO, path:"PWN/the-return-of-the-living-dead"},
+  {name:"the-echo-chamber", cat:"pwn", repo:CHAL_REPO, path:"PWN/the-echo-chamber"},
+  {name:"boundaries", cat:"reverse", repo:CHAL_REPO, path:"Reverse/boundaries"},
+  {name:"wait-for-it", cat:"reverse", repo:CHAL_REPO, path:"Reverse/wait-for-it"},
+  {name:"firmware-jumpscare", cat:"reverse", repo:CHAL_REPO, path:"Reverse/firmware-jumpscare"}
 ];
+// Discover challenges automatically: every <category>/<name> folder in the repo that I have commits in.
+// Cached for six hours so repeat visits don't burn GitHub's anonymous rate limit.
+async function loadChallenges(){
+  const KEY="chal-cache-v1";
+  try{
+    const c=JSON.parse(localStorage.getItem(KEY)||"null");
+    if(c&&Date.now()-c.t<216e5&&c.list.length) return c.list;
+  }catch(_){}
+  try{
+    const r=await fetch(`https://api.github.com/repos/${CHAL_REPO}/git/trees/main?recursive=1`);
+    if(!r.ok) throw 0;
+    const PINNED=["PWN/infiltrator","Reverse/boundaries"]; // older ones: authored under my old username, so the lookup below misses them
+    const dirs=(await r.json()).tree.filter(t=>t.type==="tree"&&t.path.split("/").length===2).map(t=>t.path).filter(p=>!PINNED.includes(p));
+    const mine=await Promise.all(dirs.map(async p=>{
+      const q=await fetch(`https://api.github.com/repos/${CHAL_REPO}/commits?author=${ME}&path=${encodeURIComponent(p)}&per_page=1`);
+      if(!q.ok) throw 0;
+      return (await q.json()).length?p:null;
+    }));
+    const list=[...PINNED,...mine.filter(Boolean)].map(p=>({name:p.split("/")[1],cat:p.split("/")[0].toLowerCase(),repo:CHAL_REPO,path:p}));
+    if(!list.length) throw 0;
+    try{localStorage.setItem(KEY,JSON.stringify({t:Date.now(),list}))}catch(_){}
+    return list;
+  }catch(_){return CHALLENGES_FALLBACK}
+}
 // Short description from a challenge's README: first prose paragraph, ignoring headings, code blocks and build steps.
 async function readmeSnippet(c){
   try{
@@ -284,7 +319,8 @@ loadWriteups().then(ws=>{
   reveal(el);
 });
 const cg=document.getElementById("chalgrid");
-Promise.all(CHALLENGES.map(readmeSnippet)).then(snips=>{
+loadChallenges().then(async CHALLENGES=>{
+  const snips=await Promise.all(CHALLENGES.map(readmeSnippet));
   cg.innerHTML=CHALLENGES.map((c,i)=>`<a class="card chal reveal" data-cat="${esc(c.cat)}" href="https://github.com/${c.repo}/tree/main/${c.path}">
     <div class="bar"><i></i><i></i><i></i><span class="path">~/${esc(c.path)}</span></div>
     <div class="body"><span class="badge">${esc(c.cat)}</span><h3>${esc(c.name)}</h3>
